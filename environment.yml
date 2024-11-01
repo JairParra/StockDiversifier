@@ -1,4 +1,4 @@
-name: wsb_env
+name: stk_env
 channels:
   - defaults
   - conda-forge
@@ -11,7 +11,7 @@ dependencies:
   - seaborn
   - ipykernel
   - tqdm
+  - transformers
   - pip:
     - requests
-    - transformers
     - streamlit
