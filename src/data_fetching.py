@@ -202,6 +202,7 @@ def fetch_stock_data(sp500_tickers_df:pd.DataFrame,
 
     # Save the data to a CSV file if a savepath is provided 
     if savepath:
+        print("saving data to", savepath)
         df.to_csv(savepath, index=False)
 
     return df, sector_mapping, industry_mapping

@@ -24,35 +24,41 @@ from tqdm import tqdm
 import numpy as np 
 import pandas as pd 
 
+# Custom 
+from src.data_fetching import scrape_sp500_wikipedia, fetch_stock_data, prepare_data_for_vae
+
 
 ###########################
 ### 2. Script Arguments ###
 ###########################
 
 # default configurations 
-RETRAIN = True
-TRAINING_DATA_DIR = "data_clean/training_data.csv"
+RETRAIN = False
+REFETCH = False
+DATA_RAW_DIR = "data_raw/"
+DATA_CLEAN_DIR = "data_clean/"
 MODEL_PATH = "models/beta_vae.pth"
-OUTPUT_PATH = "output/recommendations.csv"
+OUTPUT_PATH = "data_clean/recommendations.csv"
+STOCK_DATA_SAVEPATH = "data_raw/stock_data.csv"
 verbose = 1
 
 # Create an ArgumentParser object
 parser = argparse.ArgumentParser(description='Modify default configurations')
 
 # Add arguments for each configuration option
+parser.add_argument('--refetch', action='store_true', default=True, help='Refetch the loaded sp500 data')
 parser.add_argument('--retrain', action='store_true', default=True, help='Retrain the model')
 parser.add_argument('--verbose', type=int, default=1, help='Verbosity level')
-parser.add_argument('--custom_output_name', type=str, default=None, help='Custom name for the output file')
+parser.add_argument('--recoms_filename', type=str, default=None, help='Custom name for the output recommendation file')
 
 # Parse the command line arguments
 args = parser.parse_args()
 
 # Update the default configurations with the command line arguments
-LOAD_SAMPLE_DATA = args.load_sample_data
+REFETCH = args.refetch
 RETRAIN = args.retrain
-LIMIT_FETCH = args.limit_fetch
 verbose = args.verbose
-OUTPUT_PATH = f"data_clean/{args.custom_output_name}.csv" if args.custom_output_name is not None else OUTPUT_PATH
+OUTPUT_PATH = f"data_clean/{args.recoms_filename}.csv" if args.recoms_filename is not None else OUTPUT_PATH
 
 #########################
 ### 3. Configurations ###
@@ -78,12 +84,50 @@ TICKERS = ['AAPL', 'GOOGL', 'AMZN', 'MSFT', 'TSLA', 'FB', 'NVDA', 'PYPL', 'ADBE'
 
 if __name__ == "__main__": 
 
+    ##########################
+    ### 4.1 Data Fetching  ###
+    ##########################
+
+    # Show all the arguments the script ascall with to the user 
+    print(f"Script with called with arguments: {vars(args)}")
+
     print("1. Fetching Data")
 
+    # sp500_df = scrape_sp500_wikipedia()  # Use the function you created to scrape S&P 500 companies
+    # custom_tickers = ['TSLA', 'ZM', 'SNOW']  # Example custom tickers
+    # stock_data, sector_mapping, industry_mapping = fetch_stock_data(sp500_df, custom_tickers) # Fetch data
+    # stock_data_vae = prepare_data_for_vae(stock_data)  # Prepare data for VAE
+
+
     ## Either fetch and save or load the data 
+    if REFETCH: 
+        print("Refetching data")
+
+        # Scrape S&P 500 companies and save to data_raw
+        sp500_df = scrape_sp500_wikipedia()
+
+        # Fetch stock data and save to data_raw
+        stock_data, sector_mapping, industry_mapping = fetch_stock_data(sp500_df, TICKERS, savepath=STOCK_DATA_SAVEPATH)
+
+        # Convert the stock data to VAE format 
+        stock_data_vae = prepare_data_for_vae(stock_data)
+
+    else: 
+        print("Loading data")
+
+        # Load data from data_raw 
+        sp500_df = pd.read_csv(os.path.join(DATA_RAW_DIR, 'sp500.csv'))
+
+        # Load pre-prepraed vae_data from data_clean
+        stock_data_vae = pd.read_csv(STOCK_DATA_SAVEPATH)
+
+    # # Prepare data for VAE
+    # stock_data_vae = prepare_data_for_vae(stock_data) 
+    
     
 
     print("2. Training Model") 
 
     ## Either train and save the model to models/ or reload from there
+
 
