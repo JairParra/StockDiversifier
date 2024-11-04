@@ -183,6 +183,7 @@ def fetch_stock_data(sp500_tickers_df:pd.DataFrame,
         except Exception as e:
             warnings.warn(f"Failed to retrieve data for {ticker}: {str(e)}")
 
+    # Convert the list of dictionaries to a DataFrame
     df = pd.DataFrame(stock_features)
 
     # Encode 'Sector' and 'Industry' as integer categories
@@ -206,8 +207,37 @@ def fetch_stock_data(sp500_tickers_df:pd.DataFrame,
     return df, sector_mapping, industry_mapping
 
 
+def prepare_data_for_vae(df:pd.DataFrame) -> pd.DataFrame:
+    """
+    One-hot encodes the 'Sector' and 'Industry' columns in the input DataFrame.
+    
+    This function performs one-hot encoding on the 'Sector' and 'Industry' columns of the input DataFrame.
+    It also 
+    
+    Parameters:
+    - df (DataFrame): The input DataFrame containing the 'Sector' and 'Industry' columns.
+    
+    Returns:
+    - DataFrame: A new DataFrame with the 'Sector' and 'Industry' columns one-hot encoded.
+    """
+    
+    # Remove the Ticker and the Copmany Name
+    df = df.drop(['Ticker', 'Company Name'], axis=1) 
+
+    # Perform one-hot encoding on the 'Sector' and 'Industry' columns to numberic 1 and 0 
+    df = pd.get_dummies(df, columns=['Sector', 'Industry'], drop_first=True)
+
+    # Convert all boolean columns to integers (i.e. all the dummies columns) 
+    for col in df.columns:
+        if df[col].dtype == 'bool':
+            df[col] = df[col].astype(int)
+
+    return df
+
 # # Example usage
 # sp500_df = scrape_sp500_wikipedia()  # Use the function you created to scrape S&P 500 companies
 # custom_tickers = ['TSLA', 'ZM', 'SNOW']  # Example custom tickers
+# stock_data, sector_mapping, industry_mapping = fetch_stock_data(sp500_df, custom_tickers) # Fetch data
+# stock_data_vae = prepare_data_for_vae(stock_data)  # Prepare data for VAE
 
-# stock_data, sector_mapping, industry_mapping = fetch_stock_data(sp500_df, custom_tickers)
+

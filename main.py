@@ -80,5 +80,10 @@ if __name__ == "__main__":
 
     print("1. Fetching Data")
 
-    ## TODO
+    ## Either fetch and save or load the data 
+    
+
+    print("2. Training Model") 
+
+    ## Either train and save the model to models/ or reload from there
 
