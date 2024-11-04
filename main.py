@@ -122,12 +122,31 @@ if __name__ == "__main__":
         stock_data_vae = pd.read_csv(STOCK_DATA_SAVEPATH)
 
     # # Prepare data for VAE
-    # stock_data_vae = prepare_data_for_vae(stock_data) 
+    stock_data_vae = prepare_data_for_vae(stock_data) 
     
-    
-
-    print("2. Training Model") 
+    ###########################
+    ### 4.2 Model Training  ###
+    ###########################
 
     ## Either train and save the model to models/ or reload from there
+
+    if RETRAIN:
+        print("Retraining model")
+
+        # Train the model 
+        pass
+
+    else:
+        print("Loading model")
+
+        # Load the model 
+        pass
+
+    ############################
+    ### 4.3 Recommendations  ###
+    ############################
+
+    
+
 
 
