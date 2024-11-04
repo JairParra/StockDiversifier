@@ -224,9 +224,6 @@ def fetch_stock_data(sp500_tickers_df:pd.DataFrame,
     # Recome duplicate columns 
     df = df.loc[:, ~df.columns.duplicated()]
 
-    # Esure all columns are of type float64 
-    df = df.astype(float)
-
     t1 = time.time() 
     print("Completed fetching stock data in {:.2f} seconds.".format(t1 - t0))
 
@@ -262,6 +259,12 @@ def prepare_data_for_vae(df:pd.DataFrame) -> pd.DataFrame:
     for col in df.columns:
         if df[col].dtype == 'bool':
             df[col] = df[col].astype(int)
+
+    # Esure all columns are of type float64 
+    df = df.astype(float)
+
+    # Remove 'Sector_encoded', 'Industry_encoded' if exist still 
+    df = df.drop(['Sector_encoded', 'Industry_encoded'], axis=1)
 
     return df
 
