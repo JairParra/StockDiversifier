@@ -89,6 +89,7 @@ def fetch_stock_data(sp500_tickers_df:pd.DataFrame,
                      period:str='1mo', 
                      interval:str='1d', 
                      savepath:str=None, 
+                     remove_etfs:bool=True, 
                      ) -> Tuple[pd.DataFrame, dict, dict]:
 
     t0 = time.time()
@@ -112,6 +113,10 @@ def fetch_stock_data(sp500_tickers_df:pd.DataFrame,
             if hist_data.empty:
                 warnings.warn(f"No data found for ticker {ticker}")
                 continue
+
+            if year_data.empty:
+                warnings.warn(f"No 1-year data found for ticker {ticker}")
+                continue 
 
             # Calculate basic daily metrics
             open_price = hist_data['Open'].mean()
@@ -156,6 +161,8 @@ def fetch_stock_data(sp500_tickers_df:pd.DataFrame,
             yield_to_date = np.nan_to_num(yield_to_date, nan=0)
             dividend_rate = np.nan_to_num(dividend_rate, nan=0)
 
+            ['52 Week High', '52 Week Low', '52 Week Volatility', 'Last Year Return Rate']
+
             # ETF encoding
             etf_encoded = 1 if is_etf else 0
 
@@ -192,10 +199,30 @@ def fetch_stock_data(sp500_tickers_df:pd.DataFrame,
 
     # Impute missing Market Cap using KNN (K=3)
     imputer = KNNImputer(n_neighbors=3)
-    numerical_cols = ['Open Price', 'Close Price', 'High Price', 'Low Price', 'Last Close', '52 Week High', '52 Week Low', 'Last Month Volatility', '52 Week Volatility', 'Yield to Date', 'Yearly Dividend Rate', 'Last Year Return Rate']
+    numerical_cols = ['Open Price', 'Close Price', 'High Price', 'Low Price', 'Last Close', '52 Week High', '52 Week Low',
+                       'Last Month Volatility', '52 Week Volatility', 'Yield to Date', 'Yearly Dividend Rate', 'Last Year Return Rate']
 
     # Ensure that numerical columns are used for KNN imputation
     df['Market Cap'] = imputer.fit_transform(df[['Market Cap'] + numerical_cols])[:, 0]
+
+    # Obtain names of columns with missing values 
+    cols_with_missing = df.columns[df.isnull().any()].tolist() 
+
+    # Perform KNN imputation for each column with missing values
+    for col in cols_with_missing:
+        # Columns to use for imputation: the current column + numerical columns
+        imputation_cols = [col] + [c for c in numerical_cols if c != col]
+        
+        # Fit and transform on just the selected columns, keeping the imputed result for `col`
+        df[col] = imputer.fit_transform(df[imputation_cols])[:, 0]
+
+    # Remove ETF column and Yiled to Date if specified 
+    if remove_etfs:
+        df = df.drop('ETF', axis=1) # remove etf colum
+        df = df.drop('Yield to Date', axis=1) # remove yield to date column
+
+    # Recome duplicate columns 
+    df = df.loc[:, ~df.columns.duplicated()]
 
     t1 = time.time() 
     print("Completed fetching stock data in {:.2f} seconds.".format(t1 - t0))
@@ -232,6 +259,12 @@ def prepare_data_for_vae(df:pd.DataFrame) -> pd.DataFrame:
     for col in df.columns:
         if df[col].dtype == 'bool':
             df[col] = df[col].astype(int)
+
+    # Esure all columns are of type float64 
+    df = df.astype(float)
+
+    # Remove 'Sector_encoded', 'Industry_encoded' if exist still 
+    df = df.drop(['Sector_encoded', 'Industry_encoded'], axis=1)
 
     return df
 

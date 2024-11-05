@@ -93,12 +93,6 @@ if __name__ == "__main__":
 
     print("1. Fetching Data")
 
-    # sp500_df = scrape_sp500_wikipedia()  # Use the function you created to scrape S&P 500 companies
-    # custom_tickers = ['TSLA', 'ZM', 'SNOW']  # Example custom tickers
-    # stock_data, sector_mapping, industry_mapping = fetch_stock_data(sp500_df, custom_tickers) # Fetch data
-    # stock_data_vae = prepare_data_for_vae(stock_data)  # Prepare data for VAE
-
-
     ## Either fetch and save or load the data 
     if REFETCH: 
         print("Refetching data")
@@ -146,7 +140,7 @@ if __name__ == "__main__":
     ### 4.3 Recommendations  ###
     ############################
 
-    
+
 
 
 
