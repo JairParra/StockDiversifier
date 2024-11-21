@@ -50,7 +50,7 @@ def create_data_loaders(data, test_size=0.15, val_size=0.15, batch_size=64, rand
 
 def train_beta_vae(model, train_loader, val_loader=None, num_epochs=50, learning_rate=1e-3, beta=1):
     model.beta = beta
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     model.train()
     for epoch in range(num_epochs):
         epoch_loss = 0
@@ -98,6 +98,19 @@ def objective(trial, data):
     avg_loss = train_beta_vae(model, train_loader, val_loader, num_epochs=10, learning_rate=learning_rate, beta=beta)
     
     return avg_loss
+
+def get_embeddings(model, dataloader):
+    """Retrieve embeddings for an entire dataset."""
+    model.eval()  # Set the model to evaluation mode
+    embeddings = []
+    with torch.no_grad():
+        for batch in dataloader:
+            x = batch[0]
+            mu, logvar = model.encoder(x)
+            z = model.reparameterize(mu, logvar)
+            embeddings.append(z)
+    embeddings = torch.cat(embeddings, dim=0)
+    return embeddings
 
 ###########################
 ### 3. Beta-VAE Objects ###
@@ -156,3 +169,11 @@ class BetaVAE(nn.Module):
         kld_loss = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
         return recon_loss + self.beta * kld_loss
     
+    def get_latent_embeddings(self, x):
+        """Extract latent embeddings from input data."""
+        self.eval()  # Set the model to evaluation mode
+        with torch.no_grad():
+            mu, logvar = self.encoder(x)
+            z = self.reparameterize(mu, logvar)
+        return z
+
