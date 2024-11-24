@@ -21,6 +21,9 @@ from torch.utils.data import DataLoader, TensorDataset
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 
+# Custom modules 
+from src.data_fetching import prepare_data_for_vae
+
 ##########################
 ### 2. Utils Functions ###
 ##########################
@@ -48,9 +51,22 @@ def create_data_loaders(data, test_size=0.15, val_size=0.15, batch_size=64, rand
     
     return tr_loader, va_loader, te_loader
 
+def create_single_data_loader(data, batch_size=64):
+    '''Function to create a single DataLoader for the entire dataset.'''
+    
+    # Create DataLoader
+    loader = DataLoader(TensorDataset(torch.tensor(data, dtype=torch.float32)), batch_size=batch_size, shuffle=False)
+    
+    return loader
+
 def train_beta_vae(model, train_loader, val_loader=None, num_epochs=50, learning_rate=1e-3, beta=1):
+    """Train the Beta-VAE model."""
+
+    # Initialize the optimizer
     model.beta = beta
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+
+    # Train the model
     model.train()
     for epoch in range(num_epochs):
         epoch_loss = 0
@@ -83,6 +99,9 @@ def train_beta_vae(model, train_loader, val_loader=None, num_epochs=50, learning
     return avg_loss  # Return the final training loss (or optionally validation loss)
 
 def objective(trial, data):
+    """Objective function for Optuna to optimize the Beta-VAE model."""
+
+    # Suggest hyperparameters to tune
     latent_dim = trial.suggest_categorical('latent_dim', [5, 10, 20])
     beta = trial.suggest_float('beta', 1, 10)
     learning_rate = trial.suggest_loguniform('learning_rate', 1e-4, 1e-2)
@@ -112,9 +131,43 @@ def get_embeddings(model, dataloader):
     embeddings = torch.cat(embeddings, dim=0)
     return embeddings
 
+def generate_embeddings_dict(stock_df, scaler, beta_vae, ticker_col="Ticker"):
+    """
+    Process a stock DataFrame, normalize it, and generate embeddings for each row identified by the "ticker" column.
+    
+    Parameters:
+    - stock_df (pd.DataFrame): The input DataFrame containing stock data, including a "ticker" column.
+    - scaler (sklearn.preprocessing.StandardScaler): A prefitted scaler for normalization.
+    - beta_vae (torch.nn.Module): The pretrained beta-VAE model to generate embeddings.
+    
+    Returns:
+    - dict: A dictionary where keys are ticker symbols, and values are corresponding embeddings.
+    """
+    # Step 1: Prepare data for VAE preprocessing
+    stock_data_vae = prepare_data_for_vae(stock_df)  # Assume this function handles missing values, feature selection, etc.
+    
+    # Step 2: Normalize the data using the prefitted scaler
+    norm_data_full = scaler.transform(stock_data_vae)
+    
+    # Step 3: Convert the normalized data to PyTorch tensors
+    tensor_data_full = torch.tensor(norm_data_full, dtype=torch.float32)
+    
+    # Step 4: Create a dataloader with the full dataset
+    full_loader = create_single_data_loader(tensor_data_full)
+    
+    # Step 5: Obtain embeddings for the full dataset using the beta-VAE
+    full_embeddings = get_embeddings(beta_vae, full_loader)  # Shape: (N, embedding_dim)
+    
+    # Step 6: Match embeddings to the original tickers
+    tickers = stock_df[ticker_col].values  # Ensure alignment between tickers and rows in stock_data_vae
+    embeddings_dict = {ticker: full_embeddings[i].detach().numpy() for i, ticker in enumerate(tickers)}
+    
+    return embeddings_dict
+
 ###########################
 ### 3. Beta-VAE Objects ###
 ###########################
+
 # Define the Encoder
 class Encoder(nn.Module):
     def __init__(self, input_dim, latent_dim):

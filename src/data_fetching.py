@@ -86,8 +86,8 @@ def encode_categories(dataframe:pd.DataFrame, column_name:str) -> dict:
 
 def fetch_stock_data(sp500_tickers_df:pd.DataFrame, 
                      custom_tickers:List[str], 
-                     period:str='1mo', 
-                     interval:str='1d', 
+                     period:str='1y', 
+                     interval:str='1wk', 
                      savepath:str=None, 
                      remove_etfs:bool=True, 
                      ) -> Tuple[pd.DataFrame, dict, dict]:
@@ -108,7 +108,7 @@ def fetch_stock_data(sp500_tickers_df:pd.DataFrame,
             # Fetch stock data using Yahoo Finance API
             stock = yf.Ticker(ticker)
             hist_data = stock.history(period=period, interval=interval)
-            year_data = stock.history(period="1y")
+            year_data = stock.history(period="1y", interval="1d")
 
             if hist_data.empty:
                 warnings.warn(f"No data found for ticker {ticker}")
@@ -265,6 +265,9 @@ def prepare_data_for_vae(df:pd.DataFrame) -> pd.DataFrame:
 
     # Remove 'Sector_encoded', 'Industry_encoded' if exist still 
     df = df.drop(['Sector_encoded', 'Industry_encoded'], axis=1)
+
+    # Drop any remaining NA values
+    df = df.dropna()
 
     return df
 

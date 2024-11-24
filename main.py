@@ -127,6 +127,13 @@ if __name__ == "__main__":
     if RETRAIN:
         print("Retraining model")
 
+        # Delete all files inside config/ and models/ folder for a clean start
+        for file in os.listdir("config/"):
+            os.remove(os.path.join("config/", file))
+
+        for file in os.listdir("models/"):
+            os.remove(os.path.join("models/", file))
+
         # Train the model 
         pass
 

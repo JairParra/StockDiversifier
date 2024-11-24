@@ -16,6 +16,7 @@ dependencies:
   - yfinance
   - alpha_vantage
   - kagglehub
+  - optuna
   - pip:
     - requests
     - streamlit
