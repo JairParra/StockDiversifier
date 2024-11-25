@@ -19,8 +19,53 @@ from tqdm import tqdm
 from typing import List, Tuple
 from sklearn.impute import KNNImputer
 
+
+
+#########################
+### 2. Configurations ###
+#########################
+
+SECTORS = ['Energy', 'Industrials', 'Consumer Staples', 'Health Care',
+       'Consumer Discretionary', 'Financials', 'Real Estate',
+       'Information Technology', 'Utilities', 'Materials',
+       'Basic Materials', 'Communication Services', 'Technology',
+       'Financial Services', 'Consumer Cyclical', 'Healthcare']
+
+INDUSTRIES = ['Oil & Gas Refining & Marketing', 'Specialty Industrial Machinery', 
+              'Household & Personal Products', 'Medical Care Facilities', 'Apparel Retail',
+              'Banks - Regional', 'Airlines', 'Auto & Truck Dealerships', 'REIT - Retail',
+              'Healthcare Plans', 'Semiconductors', 'Drug Manufacturers - General', 
+              'Software - Application', 'Utilities - Regulated Electric', 'Footwear & Accessories',
+              'Trucking', 'REIT - Specialty', 'Residential Construction', 
+              'Insurance - Property & Casualty', 'Solar', 'Credit Services', 'Banks - Diversified',
+              'Building Products & Equipment', 'Utilities - Regulated Water', 'Asset Management', 
+              'Specialty Chemicals', 'Travel Services', 'Integrated Freight & Logistics',
+              'Chemicals', 'Medical Distribution', 'Oil & Gas Midstream', 'Financial Data & Stock Exchanges',
+              'Gold', 'Agricultural Inputs', 'Health Information Services', 'Electronic Components',
+              'Internet Content & Information', 'Software - Infrastructure', 'REIT - Industrial',
+              'Diagnostics & Research', 'Confectioners', 'Medical Instruments & Supplies',
+              'Scientific & Technical Instruments', 'Restaurants', 'Computer Hardware', 'Discount Stores',
+              'Entertainment', 'Food Distribution', 'Beverages - Non-Alcoholic', 'REIT - Healthcare Facilities',
+              'Capital Markets', 'Packaging & Containers', 'Grocery Stores', 'Packaged Foods',
+              'Specialty Business Services', 'REIT - Residential', 'Information Technology Services',
+              'Auto Manufacturers', 'Oil & Gas Integrated', 'Insurance Brokers', 'Specialty Retail',
+              'Communication Equipment', 'Railroads', 'Farm & Heavy Construction Machinery', 'Personal Services',
+              'Medical Devices', 'Biotechnology', 'Oil & Gas Equipment & Services', 'Oil & Gas E&P',
+              'REIT - Hotel & Motel', 'REIT - Diversified', 'Aerospace & Defense', 'Resorts & Casinos',
+              'Advertising Agencies', 'Real Estate Services', 'Insurance - Life', 'Utilities - Renewable',
+              'Building Materials', 'Auto Parts', 'Tobacco', 'Consulting Services', 'REIT - Office',
+              'Telecom Services', 'Utilities - Diversified', 'Insurance - Reinsurance', 'Pharmaceutical Retailers', 
+              'Semiconductor Equipment & Materials', 'Consumer Electronics', 'Beverages - Brewers',
+              'Pollution & Treatment Controls', 'Lodging', 'Industrial Distribution', 'Internet Retail',
+              'Apparel Manufacturing', 'Drug Manufacturers - Specialty & Generic', 'Rental & Leasing Services',
+              'Home Improvement Retail', 'Luxury Goods', 'Utilities - Independent Power Producers',
+              'Insurance - Diversified', 'Engineering & Construction', 'Conglomerates', 'Utilities - Regulated Gas',
+              'Tools & Accessories', 'Farm Products', 'Electronic Gaming & Multimedia', 'Steel', 'Waste Management', 
+              'Copper', 'Security & Protection Services', 'Furnishings, Fixtures & Appliances', 'Leisure',
+              'Electrical Equipment & Parts']
+
 ##########################
-### 2. Utils Functions ###
+### 3. Utils Functions ###
 ##########################
 
 def scrape_sp500_wikipedia():
@@ -81,7 +126,7 @@ def encode_categories(dataframe:pd.DataFrame, column_name:str) -> dict:
 
 
 #########################
-### 3. Core Functions ###
+### 4. Core Functions ###
 #########################
 
 def fetch_stock_data(sp500_tickers_df:pd.DataFrame, 
@@ -235,12 +280,13 @@ def fetch_stock_data(sp500_tickers_df:pd.DataFrame,
     return df, sector_mapping, industry_mapping
 
 
-def prepare_data_for_vae(df:pd.DataFrame) -> pd.DataFrame:
+def prepare_data_for_vae(df: pd.DataFrame) -> pd.DataFrame:
     """
     One-hot encodes the 'Sector' and 'Industry' columns in the input DataFrame.
     
-    This function performs one-hot encoding on the 'Sector' and 'Industry' columns of the input DataFrame.
-    It also 
+    This function ensures that the one-hot encoded columns include all predefined 
+    categories for 'Sector' and 'Industry' (including 'Other'), even if they are 
+    not present in the data.
     
     Parameters:
     - df (DataFrame): The input DataFrame containing the 'Sector' and 'Industry' columns.
@@ -248,28 +294,48 @@ def prepare_data_for_vae(df:pd.DataFrame) -> pd.DataFrame:
     Returns:
     - DataFrame: A new DataFrame with the 'Sector' and 'Industry' columns one-hot encoded.
     """
-    
-    # Remove the Ticker and the Copmany Name
-    df = df.drop(['Ticker', 'Company Name'], axis=1) 
+    # Define all possible categories for 'Sector' and 'Industry' including 'Other'
+    all_sectors = SECTORS + ['Other']
+    all_industries = INDUSTRIES + ['Other']
 
-    # Perform one-hot encoding on the 'Sector' and 'Industry' columns to numberic 1 and 0 
-    df = pd.get_dummies(df, columns=['Sector', 'Industry'], drop_first=True)
+    # Ensure the columns exist in the DataFrame and contain only valid categories
+    df['Sector'] = df['Sector'].where(df['Sector'].isin(all_sectors), 'Other')
+    df['Industry'] = df['Industry'].where(df['Industry'].isin(all_industries), 'Other')
 
-    # Convert all boolean columns to integers (i.e. all the dummies columns) 
-    for col in df.columns:
-        if df[col].dtype == 'bool':
-            df[col] = df[col].astype(int)
+    # Drop irrelevant columns
+    df = df.drop(['Ticker', 'Company Name'], axis=1)
+
+    # Perform one-hot encoding with all predefined categories
+    sector_dummies = pd.get_dummies(df['Sector'], prefix='Sector')
+    industry_dummies = pd.get_dummies(df['Industry'], prefix='Industry')
+
+    # Ensure all predefined categories are represented in the dummy columns
+    for sector in all_sectors:
+        if f"Sector_{sector}" not in sector_dummies.columns:
+            sector_dummies[f"Sector_{sector}"] = 0
+
+    for industry in all_industries:
+        if f"Industry_{industry}" not in industry_dummies.columns:
+            industry_dummies[f"Industry_{industry}"] = 0
+
+    # Concatenate the one-hot encoded columns back to the DataFrame
+    df = pd.concat([df, sector_dummies, industry_dummies], axis=1)
+
+    # Drop the original 'Sector' and 'Industry' columns
+    df = df.drop(['Sector', 'Industry'], axis=1)
+
+    # Ensure all dummy columns are of type float
+    for col in sector_dummies.columns.union(industry_dummies.columns):
+        df[col] = df[col].astype(float)
 
     # Esure all columns are of type float64 
     df = df.astype(float)
-
-    # Remove 'Sector_encoded', 'Industry_encoded' if exist still 
-    df = df.drop(['Sector_encoded', 'Industry_encoded'], axis=1)
 
     # Drop any remaining NA values
     df = df.dropna()
 
     return df
+
 
 # # Example usage
 # sp500_df = scrape_sp500_wikipedia()  # Use the function you created to scrape S&P 500 companies
