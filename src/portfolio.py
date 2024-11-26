@@ -11,6 +11,7 @@ portfolio.py
 ##################
 
 # General 
+import random
 import warnings
 import yfinance as yf
 from tqdm import tqdm
@@ -21,8 +22,9 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-# Optimization 
+# Optimization & Distance Metrics 
 from scipy.optimize import minimize
+from scipy.spatial.distance import cdist
 
 ##########################
 ### 2. Utils Functions ###
@@ -68,6 +70,122 @@ def fetch_and_calculate_returns(tickers: List[str],
             print(f"Failed to fetch or process data for {ticker}: {str(e)}")
     
     return returns_dict
+
+
+def diversify_betavae_portfolio(
+    portfolio, 
+    portfolio_embeddings, 
+    all_returns, 
+    all_stock_embeddings, 
+    num_iter=20, 
+    top_N=5, 
+    distance_type="euclidean", 
+    optim_algorithm="max_div", 
+    verbose = 1
+):
+    """
+    Diversify a portfolio based on embedding similarity and maximize diversification ratio.
+    
+    Parameters:
+    - portfolio: Portfolio object.
+    - portfolio_embeddings: Dictionary of portfolio ticker embeddings.
+    - all_returns: Dictionary of tickers and their corresponding return vectors.
+    - all_stock_embeddings: Dictionary of all stock embeddings.
+    - num_iter: Maximum number of iterations.
+    - top_N: Number of most dissimilar stocks to consider for replacement.
+    - distance_type: Type of distance metric ("euclidean" or "cosine").
+    - optim_algorithm: Optimization algorithm to use (e.g., "max_div", "mean_variance").
+    
+    Returns:
+    - updated_portfolio: Updated Portfolio object.
+    - diversification_history: List of diversification ratios at each step.
+    - swap_log: Dictionary of removed tickers and their replacements.
+    """
+    # Deep copy the portfolio
+    updated_portfolio = portfolio.copy_portfolio()
+    
+    # Ensure the portfolio is optimized
+    updated_portfolio.optimize_weights(method=optim_algorithm, update_weights=True)
+
+    # Calculate the initial diversification ratio
+    initial_diversification_ratio = updated_portfolio.diversification_ratio
+    current_diversification_ratio = initial_diversification_ratio
+    
+    # Exclude portfolio tickers from all_stock_embeddings
+    excluded_tickers = set(updated_portfolio.tickers)
+    available_tickers = {ticker: embedding for ticker, embedding in all_stock_embeddings.items() 
+                         if ticker not in excluded_tickers}
+    
+    diversification_history = [initial_diversification_ratio]
+    swap_log = {}
+    
+    if verbose >= 1: 
+        print(f"Initial Diversification Ratio: {initial_diversification_ratio}")
+    
+    for _ in tqdm(range(num_iter), desc="Diversification Iterations"):
+        # 3. Find the two most similar stocks in the portfolio
+        tickers = list(portfolio_embeddings.keys())
+        embeddings = np.array(list(portfolio_embeddings.values()))
+        pairwise_distances = cdist(embeddings, embeddings, metric=distance_type)
+        np.fill_diagonal(pairwise_distances, np.inf)  # Ignore self-similarity
+        
+        # Find the indices of the most similar pair
+        i, j = np.unravel_index(np.argmin(pairwise_distances), pairwise_distances.shape)
+        most_similar_pair = [tickers[i], tickers[j]]
+        
+        # 4. Pick one of these tickers at random
+        ticker_to_replace = random.choice(most_similar_pair)
+        ticker_embedding = portfolio_embeddings[ticker_to_replace]
+        
+        # Find top_N most dissimilar stocks from the universe
+        all_embeddings = np.array(list(available_tickers.values()))
+        distances_to_ticker = cdist([ticker_embedding], all_embeddings, metric=distance_type).flatten()
+        top_dissimilar_indices = np.argsort(distances_to_ticker)[-top_N:]
+        top_dissimilar_tickers = [list(available_tickers.keys())[idx] for idx in top_dissimilar_indices]
+        
+        # Choose one of these tickers at random
+        replacement_ticker = random.choice(top_dissimilar_tickers)
+        replacement_returns = all_returns[replacement_ticker]  # Correctly fetch return vectors
+        
+        # Temporarily create a new copy of the portfolio for the swap
+        temp_portfolio = updated_portfolio.copy_portfolio()
+        
+        try:
+            # Apply the potential swap
+            add_tickers = {replacement_ticker: replacement_returns}
+            remove_tickers = [ticker_to_replace]
+            temp_portfolio.update_portfolio(add_tickers=add_tickers, remove_tickers=remove_tickers)
+            temp_portfolio.optimize_weights(method=optim_algorithm, update_weights=True)
+            
+            # Calculate the new diversification ratio
+            new_diversification_ratio = temp_portfolio.diversification_ratio
+            
+            # Accept or reject the swap
+            if new_diversification_ratio > current_diversification_ratio:
+                # Accept the swap
+                updated_portfolio = temp_portfolio
+                current_diversification_ratio = new_diversification_ratio
+                diversification_history.append(current_diversification_ratio)
+                excluded_tickers.add(ticker_to_replace)
+                available_tickers.pop(replacement_ticker)
+                swap_log[ticker_to_replace] = replacement_ticker
+                
+                if verbose >= 1: 
+                    print(f"Accepted Swap: {ticker_to_replace} -> {replacement_ticker}")
+                    print(f"New Diversification Ratio: {new_diversification_ratio}")
+                
+                # Update portfolio embeddings
+                portfolio_embeddings.pop(ticker_to_replace)
+                portfolio_embeddings[replacement_ticker] = all_stock_embeddings[replacement_ticker]
+            else:
+                if verbose >= 2: 
+                    print(f"Rejected Swap: {ticker_to_replace} -> {replacement_ticker}")
+        except Exception as e:
+            print(f"Error during swap attempt: {e}")
+            print(f"Portfolio state after error: {updated_portfolio.raw_returns.keys()}")
+            continue
+
+    return updated_portfolio, diversification_history, swap_log
 
 
 ##########################
@@ -331,6 +449,7 @@ class Portfolio:
         self.Sigma = np.cov(self.returns_matrix, rowvar=False)
         self.sigmas = np.sqrt(np.diag(self.Sigma))
         self.expected_returns = self.returns_matrix.mean(axis=0)
+        self.raw_returns = {ticker: self.returns_matrix[:, i] for i, ticker in enumerate(self.tickers)}
 
         # Step 4: Handle new weights or normalize existing weights
         if new_weights:

@@ -59,7 +59,7 @@ def create_single_data_loader(data, batch_size=64):
     
     return loader
 
-def train_beta_vae(model, train_loader, val_loader=None, num_epochs=50, learning_rate=1e-3, beta=1):
+def train_beta_vae(model, train_loader, val_loader=None, num_epochs=50, learning_rate=1e-3, beta=1, verbose=True):
     """Train the Beta-VAE model."""
 
     # Initialize the optimizer
@@ -80,7 +80,8 @@ def train_beta_vae(model, train_loader, val_loader=None, num_epochs=50, learning
             epoch_loss += loss.item()
         
         avg_loss = epoch_loss / len(train_loader.dataset)
-        print(f"Epoch [{epoch+1}/{num_epochs}], Training Loss: {avg_loss:.4f}")
+        if verbose: 
+            print(f"Epoch [{epoch+1}/{num_epochs}], Training Loss: {avg_loss:.4f}")
         
         # Evaluate on validation set if provided
         if val_loader:
@@ -93,12 +94,13 @@ def train_beta_vae(model, train_loader, val_loader=None, num_epochs=50, learning
                     loss = model.loss_function(recon_x, x, mu, logvar)
                     val_loss += loss.item()
             avg_val_loss = val_loss / len(val_loader.dataset)
-            print(f"Epoch [{epoch+1}/{num_epochs}], Validation Loss: {avg_val_loss:.4f}")
+            if verbose: 
+                print(f"Epoch [{epoch+1}/{num_epochs}], Validation Loss: {avg_val_loss:.4f}")
             model.train()  # Switch back to training mode
     
     return avg_loss  # Return the final training loss (or optionally validation loss)
 
-def objective(trial, data):
+def objective(trial, data, verbose=True):
     """Objective function for Optuna to optimize the Beta-VAE model."""
 
     # Suggest hyperparameters to tune
@@ -114,7 +116,8 @@ def objective(trial, data):
     model = BetaVAE(input_dim=data.shape[1], latent_dim=latent_dim, beta=beta)
     
     # Train the model using the train loader and validate with the val loader
-    avg_loss = train_beta_vae(model, train_loader, val_loader, num_epochs=10, learning_rate=learning_rate, beta=beta)
+    avg_loss = train_beta_vae(model, train_loader, val_loader, num_epochs=10, 
+                              learning_rate=learning_rate, beta=beta, verbose=verbose)
     
     return avg_loss
 
