@@ -427,8 +427,10 @@ if __name__ == "__main__":
             "Portfolio": f"Portfolio_{i}",
             "Initial_DR": initial_dr,
             "Final_DR": final_dr,
+            "DR_Improvement": round(((final_dr - initial_dr)/initial_dr) * 100, 3), # pct improvement
             "Initial_SR": initial_sr,
             "Final_SR": final_sr, 
+            "SR_Improvement": round(((final_sr - initial_sr)/initial_sr) * 100, 3), # pct improvement
             "Tickers": updated_portfolio.tickers
         })
 
@@ -436,7 +438,7 @@ if __name__ == "__main__":
     portfolio_results_df = pd.DataFrame(portfolio_results)
 
     # Sort by Final_DR
-    portfolio_results_df = portfolio_results_df.sort_values(by="Final_DR", ascending=False)
+    portfolio_results_df = portfolio_results_df.sort_values(by="DR_Improvement", ascending=False)
 
     ################################################
     ### 4.8 Beta-VAE Diversification Experiments ###
@@ -446,9 +448,8 @@ if __name__ == "__main__":
     print(portfolio_results_df)
 
     # disply sorted by final SR
-    print(portfolio_results_df.sort_values(by="Final_SR", ascending=False))
+    print(portfolio_results_df.sort_values(by="SR_Improvement", ascending=False))
 
     # Save the table to csv under logs folder
     portfolio_results_df.to_csv(EXPERIMENTS_LOG_PATH, index=False)
 
-    

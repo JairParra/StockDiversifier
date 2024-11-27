@@ -509,7 +509,7 @@ class Portfolio:
     #     plt.show()
 
 
-    def visualize_portfolio_distribution(self, figsize=(10, 6)) -> None:
+    def visualize_portfolio_distribution(self, pname="", figsize=(10, 6)) -> None:
         """
         Visualizes the portfolio distribution using a pie chart with improved label positioning.
         
@@ -539,7 +539,7 @@ class Portfolio:
         
         # Improve layout
         plt.axis("equal")  # Equal aspect ratio ensures the pie is circular
-        plt.title("Portfolio Distribution")
+        plt.title(f"{pname}Portfolio Distribution")
         plt.tight_layout()
         plt.show()
 
