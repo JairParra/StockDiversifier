@@ -146,6 +146,9 @@ def fetch_stock_data(sp500_tickers_df:pd.DataFrame,
     tickers = list(sp500_tickers_df['Symbol'].unique()) + custom_tickers
     tickers = list(set(tickers))  # Remove duplicates
 
+    # Replace periods in tickers with hyphens to avoid issues with filenames
+    tickers = [ticker.replace('.', '-') for ticker in tickers]
+
     stock_features = []
 
     for ticker in tqdm(tickers, desc="Fetching stock data..."):
@@ -192,7 +195,7 @@ def fetch_stock_data(sp500_tickers_df:pd.DataFrame,
             dividend_rate = stock.info.get('dividendRate', np.nan)
 
             # Look for the sector in the S&P 500 dataframe first
-            sp500_sector_row = sp500_tickers_df[sp500_tickers_df['Symbol'] == ticker]
+            sp500_sector_row = sp500_tickers_df[sp500_tickers_df['Symbol'].str.replace('.', '-') == ticker]
             if not sp500_sector_row.empty:
                 sector = sp500_sector_row.iloc[0]['GICS Sector']
             else:
@@ -232,6 +235,10 @@ def fetch_stock_data(sp500_tickers_df:pd.DataFrame,
                 'Yearly Dividend Rate': dividend_rate,
                 'Last Year Return Rate': last_year_return
             })
+
+            # Pause for 1 second to avoid hitting the API rate limit
+            time.sleep(1)
+            
         except Exception as e:
             warnings.warn(f"Failed to retrieve data for {ticker}: {str(e)}")
 

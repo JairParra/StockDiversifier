@@ -11,6 +11,7 @@ portfolio.py
 ##################
 
 # General 
+import time
 import random
 import warnings
 import yfinance as yf
@@ -65,6 +66,9 @@ def fetch_and_calculate_returns(tickers: List[str],
             prices = stock_data[price_column].values
             returns = np.diff(prices) / prices[:-1]  # Simple returns
             returns_dict[ticker] = returns
+
+            # Wait one second to avoid hitting the Yahoo Finance API rate limit
+            time.sleep(1)
         
         except Exception as e:
             print(f"Failed to fetch or process data for {ticker}: {str(e)}")
@@ -494,12 +498,123 @@ class Portfolio:
             risk_free=self.risk_free
         )
 
-    def visualize_portfolio_distribution(self) -> None:
+    # def visualize_portfolio_distribution(self) -> None:
+    #     """
+    #     Visualizes the portfolio distribution using a pie chart.
+    #     """
+    #     plt.figure(figsize=(10, 6))
+    #     plt.pie(self.w, labels=self.tickers, autopct="%1.1f%%", startangle=140)
+    #     plt.axis("equal")
+    #     plt.title("Portfolio Distribution")
+    #     plt.show()
+
+
+    def visualize_portfolio_distribution(self, figsize=(10, 6)) -> None:
         """
-        Visualizes the portfolio distribution using a pie chart.
+        Visualizes the portfolio distribution using a pie chart with improved label positioning.
+        
+        Parameters:
+        - figsize: Size of the figure.
         """
-        plt.figure(figsize=(10, 6))
-        plt.pie(self.w, labels=self.tickers, autopct="%1.1f%%", startangle=140)
-        plt.axis("equal")
+        plt.figure(figsize=figsize)
+        
+        # Create the pie chart with label positions set to None initially
+        wedges, texts, autotexts = plt.pie(
+            self.w, 
+            labels=None,  # Disable labels initially
+            autopct="%1.1f%%", 
+            startangle=140
+        )
+
+        # Adjust label positions manually to avoid overlap
+        for wedge, label in zip(wedges, self.tickers):
+            angle = (wedge.theta2 + wedge.theta1) / 2  # Compute the midpoint angle
+            x = 1.1 * np.cos(np.radians(angle))       # Adjust x-coordinate for label
+            y = 1.1 * np.sin(np.radians(angle))       # Adjust y-coordinate for label
+            plt.text(
+                x, y, label, 
+                ha="center", va="center", 
+                fontsize=9, bbox=dict(facecolor="white", edgecolor="black", boxstyle="round,pad=0.3")
+            )
+        
+        # Improve layout
+        plt.axis("equal")  # Equal aspect ratio ensures the pie is circular
         plt.title("Portfolio Distribution")
+        plt.tight_layout()
         plt.show()
+
+
+    # def visualize_portfolio_distribution(self, kind="pie", show_legend=True, figsize=(12, 8), max_labels=15) -> None:
+    #     """
+    #     Visualizes the portfolio distribution using a pie chart or bar chart.
+        
+    #     Parameters:
+    #     - kind: Type of chart to plot. Can be "pie" or "bar".
+    #     - show_legend: Whether to display a legend (for pie chart).
+    #     - figsize: Size of the figure.
+    #     - max_labels: Maximum number of labels to display directly on the chart. 
+    #                 For pie charts, excess labels are aggregated into 'Others'.
+    #                 For bar charts, all stocks are shown regardless.
+    #     """
+    #     # Sort weights and labels for clarity
+    #     sorted_weights, sorted_tickers = zip(
+    #         *sorted(zip(self.w, self.tickers), reverse=True)
+    #     )
+
+    #     # For equal weights, show all stocks
+    #     if np.allclose(sorted_weights, np.full_like(sorted_weights, 1 / len(sorted_weights))):
+    #         max_labels = len(sorted_weights)
+
+    #     # Aggregate small weights for pie chart
+    #     if kind == "pie" and len(sorted_weights) > max_labels:
+    #         displayed_weights = list(sorted_weights[:max_labels])
+    #         displayed_tickers = list(sorted_tickers[:max_labels])
+    #         other_weight = sum(sorted_weights[max_labels:])
+    #         displayed_weights.append(other_weight)
+    #         displayed_tickers.append("Others")
+    #     else:
+    #         displayed_weights = sorted_weights
+    #         displayed_tickers = sorted_tickers
+
+    #     if kind == "pie":
+    #         # Plot pie chart
+    #         plt.figure(figsize=figsize)
+    #         explode = [0.1 if i == 0 else 0 for i in range(len(displayed_weights))]
+
+    #         wedges, texts, autotexts = plt.pie(
+    #             displayed_weights,
+    #             labels=None if show_legend else displayed_tickers,
+    #             autopct="%1.1f%%",
+    #             startangle=90,
+    #             explode=explode,
+    #             textprops=dict(color="black"),
+    #         )
+
+    #         # Add a legend if enabled
+    #         if show_legend:
+    #             plt.legend(
+    #                 loc="upper left",
+    #                 labels=[f"{ticker}: {weight:.2%}" for ticker, weight in zip(displayed_tickers, displayed_weights)],
+    #                 bbox_to_anchor=(1, 0.5),
+    #             )
+
+    #         # Improve layout
+    #         plt.axis("equal")  # Equal aspect ratio ensures the pie is circular
+    #         plt.title("Portfolio Distribution (Pie Chart)")
+    #         plt.tight_layout()
+    #         plt.show()
+
+    #     elif kind == "bar":
+    #         # Plot bar chart
+    #         plt.figure(figsize=figsize)
+    #         plt.bar(displayed_tickers, displayed_weights, color="skyblue")
+    #         plt.xlabel("Tickers")
+    #         plt.ylabel("Weights")
+    #         plt.title("Portfolio Distribution (Bar Chart)")
+    #         plt.xticks(rotation=45, ha="right")
+    #         plt.tight_layout()
+    #         plt.show()
+
+    #     else:
+    #         raise ValueError(f"Unknown chart type: {kind}. Choose 'pie' or 'bar'.")
+
