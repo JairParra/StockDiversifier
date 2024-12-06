@@ -36,6 +36,7 @@ import torch
 from src.beta_vae import Encoder
 from src.beta_vae import Decoder
 from src.beta_vae import BetaVAE
+from src.pca_enc import PCAEncoder
 from src.portfolio import Portfolio
 
 # Custom Util Functions
@@ -47,11 +48,12 @@ from src.data_fetching import prepare_data_for_vae
 
 # Beta VAE Functions
 from src.beta_vae import create_data_loaders
-from src.beta_vae import create_single_data_loader
 from src.beta_vae import objective
 from src.beta_vae import train_beta_vae
-from src.beta_vae import get_embeddings
-from src.beta_vae import generate_embeddings_dict
+from src.beta_vae import generate_embeddings_dict as get_vae_embeddings
+
+# PCA Functions
+from src.pca_enc import generate_embeddings_dict as get_pca_embeddings
 
 # Portfolio Functions
 from src.portfolio import fetch_and_calculate_returns
@@ -75,6 +77,7 @@ STOCK_DATA_PATH = os.path.join(DATA_RAW_DIR, "stock_data.csv")
 RETURNS_DATA_PATH = os.path.join(DATA_RAW_DIR, "all_returns.json")
 BEST_PARAMS_PATH = os.path.join(CONFIG_DIR, "best_params.json") 
 EXPERIMENTS_LOG_PATH = os.path.join(LOGS_DIR, "experiments_results.csv")
+SP500_DATA_PATH = os.path.join(DATA_RAW_DIR, "sp500_data.csv")
 
 # default script parameters
 RETRAIN = False
@@ -83,8 +86,8 @@ LOAD_RETURNS = False
 verbose = 1
 
 # default experiment configurations 
-NUM_PORTFOLIOS = 15
-NUM_INITIAL_TICKERS = 15
+NUM_PORTFOLIOS = 20
+NUM_INITIAL_TICKERS = 10
 OPTIM_METHOD = "max_div"
 
 # Create an ArgumentParser object
@@ -93,7 +96,7 @@ parser = argparse.ArgumentParser(description='Modify default configurations')
 # Add arguments for each configuration option
 parser.add_argument('--refetch', action='store_true', default=True, help='Refetch the loaded sp500 data')
 parser.add_argument('--retrain', action='store_true', default=True, help='Retrain the model')
-parser.add_argument('--load_returns', action='store_true', default=True, help='Refetch retruns data for all stocks')
+parser.add_argument('--load_returns', action='store_true', default=True, help='Refetch returns data for all stocks')
 parser.add_argument('--verbose', type=int, default=1, help='Verbosity level')
 parser.add_argument('--recoms_filename', type=str, default=None, help='Custom name for the output recommendation file')
 
@@ -184,8 +187,17 @@ if __name__ == "__main__":
 
     print("1. Fetching Data")
 
-    # Scrape S&P 500 companies names, tikers and industris from Wikipedia
-    sp500_df = scrape_sp500_wikipedia()  
+    if REFETCH:
+        print("Refetching S&P 500 Data")
+
+        # Scrape S&P 500 companies names, tikers and industris from Wikipedia
+        sp500_df = scrape_sp500_wikipedia()
+
+        # Save the data to a file
+        sp500_df.to_csv(SP500_DATA_PATH, index=False)
+    else: 
+        # Load the data from the file
+        sp500_df = pd.read_csv(SP500_DATA_PATH)
 
     #########################################################
     ### 4.2 Fetch or Load (Aggregated) Raw Stock Features ###
@@ -295,7 +307,7 @@ if __name__ == "__main__":
         
         # Assuming `normalized_data` is the prepared dataset
         study = optuna.create_study(direction='minimize')
-        study.optimize(lambda trial: objective(trial, normalized_data, verbose=False), n_trials=50)
+        study.optimize(lambda trial: objective(trial, normalized_data, verbose=False), n_trials=100)
 
         # Get the best hyperparameters
         best_params = study.best_params
@@ -344,7 +356,7 @@ if __name__ == "__main__":
         batch_size = best_params['batch_size']
         input_dim = stock_data_vae.shape[1]
 
-        # Recreate DataLoaders with the best batch size
+        # Recreate DataLoaders with the best batch sizes
         train_loader, val_loader, test_loader = create_data_loaders(tensor_data, batch_size=batch_size)
 
         # Initialize and train the model
@@ -362,6 +374,18 @@ if __name__ == "__main__":
         torch.save(model_metadata, MODEL_PATH)
         print(f"Model trained and saved to {MODEL_PATH}.")
 
+
+    ##########################
+    ### 4.8 PCA Encodings  ###
+    ##########################
+
+    # Initialize PCA encoder with same dimension as the latent dim of the Beta-VAE
+    pca_encoder = PCAEncoder(data=normalized_data, n_components=best_params["latent_dim"])
+
+    # Initialize another PCA encoder with optimal number of components 
+    pca_encoder_tuned = PCAEncoder(data=normalized_data)
+    pca_encoder_tuned.autotune_num_components(explained_var=0.9) # Autotune to 90% explained variance
+
     #############################################################################################################################
     #############################################################################################################################\
 
@@ -370,8 +394,9 @@ if __name__ == "__main__":
     #####################################################
 
     # Generate embeddings for the stock data
-    stock_embeddings = generate_embeddings_dict(stock_data, scaler, beta_vae, ticker_col="Ticker")
-
+    stock_embeddings = get_vae_embeddings(stock_data, scaler, beta_vae, ticker_col="Ticker")
+    pca_stock_embeddings = get_pca_embeddings(stock_data, scaler, pca_encoder, ticker_col="Ticker")
+    pca_stock_embeddings_tuned = get_pca_embeddings(stock_data, scaler, pca_encoder_tuned,ticker_col="Ticker")
 
     ################################################
     ### 4.8 Beta-VAE Diversification Experiments ###
@@ -381,74 +406,147 @@ if __name__ == "__main__":
     portfolio_results = []
     portfolio_tickers = {}
 
-    for i in range(1, NUM_PORTFOLIOS + 1):
+    # Define number of iterations for diversification process
+    optim_method = "max_div"
+
+    for i in tqdm(range(1, NUM_PORTFOLIOS + 1), desc="Portfolio Diversification Experiments..."):
         # Step 1: Generate random portfolio
         random_tickers = np.random.choice(list(all_returns.keys()), NUM_INITIAL_TICKERS, replace=False)
         random_returns = {ticker: all_returns[ticker] for ticker in random_tickers}
         random_portfolio = Portfolio(returns_dict=random_returns, frequency="weekly")
         
         # Optimize initial portfolio
-        random_portfolio.optimize_weights(method= OPTIM_METHOD, update_weights=True)
+        random_portfolio.optimize_weights(method=optim_method, update_weights=True)
         
-        # Record initial DR and SR
+        # Record initial diversification ratio (DR) and Sharpe ratio (SR)
         initial_dr = random_portfolio.diversification_ratio
         initial_sr = random_portfolio.sharpe_ratio
         
-        # Step 2: Generate embeddings
-        random_portfolio_embeddings = {ticker: stock_embeddings[ticker] for ticker in random_portfolio.tickers
-                                    if ticker in stock_embeddings.keys()}
-        assert len(random_portfolio_embeddings) == len(random_portfolio.tickers)
+        # Initialize results container for this portfolio
+        portfolio_experiments = []
         
-        # Step 3: Apply diversification function
-        updated_portfolio, diversification_history, swap_log = diversify_betavae_portfolio(
-            portfolio=random_portfolio,
-            portfolio_embeddings=random_portfolio_embeddings,
-            all_returns=all_returns,
-            all_stock_embeddings=stock_embeddings,
-            num_iter=200,
-            top_N=5,
-            optim_algorithm= OPTIM_METHOD,
-            distance_type="euclidean", 
-            verbose=False
-        )
+        # Define embedding methods and corresponding data
+        methods = [
+            ("Beta-VAE", stock_embeddings),
+            ("PCA (Latent Dim)", pca_stock_embeddings),
+            ("PCA (90% Var)", pca_stock_embeddings_tuned)
+        ]
         
-        # Optimize the updated portfolio after swaps
-        updated_portfolio.optimize_weights(method= OPTIM_METHOD, update_weights=True)
-        
-        # Record updated DR and SR
-        final_dr = updated_portfolio.diversification_ratio
-        final_sr = updated_portfolio.sharpe_ratio
-        
-        # Store tickers for the updated portfolio
-        portfolio_tickers[f"Portfolio_{i}"] = updated_portfolio.tickers
-        
-        # Save results for the dataframe
-        portfolio_results.append({
-            "Portfolio": f"Portfolio_{i}",
-            "Initial_DR": initial_dr,
-            "Final_DR": final_dr,
-            "DR_Improvement": round(((final_dr - initial_dr)/initial_dr) * 100, 3), # pct improvement
-            "Initial_SR": initial_sr,
-            "Final_SR": final_sr, 
-            "SR_Improvement": round(((final_sr - initial_sr)/initial_sr) * 100, 3), # pct improvement
-            "Tickers": updated_portfolio.tickers
-        })
+        for method_name, embeddings in methods:
+            # Step 2: Generate portfolio-specific embeddings
+            random_portfolio_embeddings = {
+                ticker: embeddings[ticker] for ticker in random_portfolio.tickers if ticker in embeddings.keys()
+            }
+            assert len(random_portfolio_embeddings) == len(random_portfolio.tickers)
+
+            # Step 3: Apply diversification function
+            updated_portfolio, diversification_history, swap_log = diversify_betavae_portfolio(
+                portfolio=random_portfolio,
+                portfolio_embeddings=random_portfolio_embeddings,
+                all_returns=all_returns,
+                all_stock_embeddings=embeddings,
+                num_iter=250,
+                top_N=10,
+                optim_algorithm=optim_method,
+                distance_type="euclidean",
+                verbose=False
+            )
+            
+            # Optimize the updated portfolio after swaps
+            updated_portfolio.optimize_weights(method=optim_method, update_weights=True)
+            
+            # Record updated DR and SR
+            final_dr = updated_portfolio.diversification_ratio
+            final_sr = updated_portfolio.sharpe_ratio
+            
+            # Store results for this method
+            portfolio_experiments.append({
+                "Portfolio": f"Portfolio_{i}",
+                "Method": method_name,
+                "Initial_DR": initial_dr,
+                "Final_DR": final_dr,
+                "DR_Improvement": round(((final_dr - initial_dr) / initial_dr) * 100, 3),  # pct improvement
+                "Initial_SR": initial_sr,
+                "Final_SR": final_sr,
+                "SR_Improvement": round(((final_sr - initial_sr) / initial_sr) * 100, 3),  # pct improvement
+                "Tickers": updated_portfolio.tickers
+            })
+            
+        # Append all results for this portfolio to the overall results
+        portfolio_results.extend(portfolio_experiments)
 
     # Convert results to a DataFrame
     portfolio_results_df = pd.DataFrame(portfolio_results)
 
-    # Sort by Final_DR
-    portfolio_results_df = portfolio_results_df.sort_values(by="DR_Improvement", ascending=False)
+    # Sort results by method and DR improvement
+    portfolio_results_df = portfolio_results_df.sort_values(by=["Method", "DR_Improvement"], ascending=False)
 
     ################################################
     ### 4.8 Beta-VAE Diversification Experiments ###
     ################################################
 
     # Display the table
-    print(portfolio_results_df)
+    print(portfolio_results_df.sort_values(by=["DR_Improvement"], ascending=False))
 
     # disply sorted by final SR
     print(portfolio_results_df.sort_values(by="SR_Improvement", ascending=False))
+
+    # display sorted by method and DR improvement
+    print(portfolio_results_df.sort_values(by=["Method", "DR_Improvement"], ascending=False))
+
+    #############################################
+    ### 4.9 More Tables Reported in the Paper ###
+    #############################################
+
+    print("#"*100) 
+    print("Average Results for all Methods")
+
+    # Compute the average initial and final DR, and average DR improvement for each method
+    avg_results = portfolio_results_df.groupby('Method').agg(
+        Average_Initial_DR=('Initial_DR', 'mean'),
+        Average_Final_DR=('Final_DR', 'mean'),
+        Average_DR_Improvement=('DR_Improvement', 'mean')
+    ).reset_index()
+
+    # Sort by Average_DR_Improvement descending for clarity
+    avg_results = avg_results.sort_values(by="Average_DR_Improvement", ascending=False)
+
+    print(avg_results)
+
+    #############################################
+
+    print("#"*100)
+    print("Results for the Beta-VAE method:")
+
+    # Filter for Beta-VAE and sort by DR Improvement
+    beta_vae_top = portfolio_results_df[portfolio_results_df['Method'] == 'Beta-VAE'] \
+        .sort_values(by='DR_Improvement', ascending=False).head(3)
+
+    print(beta_vae_top[['Portfolio', 'Initial_DR', 'Final_DR', 'DR_Improvement', 'Initial_SR', 'Final_SR', 'SR_Improvement']])
+
+    #############################################
+
+    print("#"*100)
+    print("Results for the PCA (Latent Dim) method:")
+
+    # Filter for PCA (Latent Dim) and sort by DR Improvement
+    pca_latent_top = portfolio_results_df[portfolio_results_df['Method'] == 'PCA (Latent Dim)'] \
+        .sort_values(by='DR_Improvement', ascending=False).head(3)
+
+    print(pca_latent_top[['Portfolio', 'Initial_DR', 'Final_DR', 'DR_Improvement', 'Initial_SR', 'Final_SR', 'SR_Improvement']])
+
+    #############################################
+    print("#"*100)
+    print("Results for the PCA (90% Var) method:")
+
+    # Filter for PCA (90% Var) and sort by DR Improvement
+    pca_90var_top = portfolio_results_df[portfolio_results_df['Method'] == 'PCA (90% Var)'] \
+        .sort_values(by='DR_Improvement', ascending=False).head(3)
+
+    print(pca_90var_top[['Portfolio', 'Initial_DR', 'Final_DR', 'DR_Improvement', 'Initial_SR', 'Final_SR', 'SR_Improvement']])
+
+    #############################################
+    print("#"*100)
 
     # Save the table to csv under logs folder
     portfolio_results_df.to_csv(EXPERIMENTS_LOG_PATH, index=False)

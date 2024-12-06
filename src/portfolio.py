@@ -12,6 +12,7 @@ portfolio.py
 
 # General 
 import time
+import torch
 import random
 import warnings
 import yfinance as yf
@@ -26,6 +27,11 @@ import matplotlib.pyplot as plt
 # Optimization & Distance Metrics 
 from scipy.optimize import minimize
 from scipy.spatial.distance import cdist
+
+# Custom Functions
+from src.beta_vae import create_single_data_loader
+from src.beta_vae import get_embeddings
+from src.data_fetching import prepare_data_for_vae
 
 ##########################
 ### 2. Utils Functions ###
@@ -74,6 +80,40 @@ def fetch_and_calculate_returns(tickers: List[str],
             print(f"Failed to fetch or process data for {ticker}: {str(e)}")
     
     return returns_dict
+
+
+def generate_embeddings_dict(stock_df, scaler, beta_vae, ticker_col="Ticker"):
+    """
+    Process a stock DataFrame, normalize it, and generate embeddings for each row identified by the "ticker" column.
+    
+    Parameters:
+    - stock_df (pd.DataFrame): The input DataFrame containing stock data, including a "ticker" column.
+    - scaler (sklearn.preprocessing.StandardScaler): A prefitted scaler for normalization.
+    - beta_vae (torch.nn.Module): The pretrained beta-VAE model to generate embeddings.
+    
+    Returns:
+    - dict: A dictionary where keys are ticker symbols, and values are corresponding embeddings.
+    """
+    # Step 1: Prepare data for VAE preprocessing
+    stock_data_vae = prepare_data_for_vae(stock_df)  # Assume this function handles missing values, feature selection, etc.
+    
+    # Step 2: Normalize the data using the prefitted scaler
+    norm_data_full = scaler.transform(stock_data_vae)
+    
+    # Step 3: Convert the normalized data to PyTorch tensors
+    tensor_data_full = torch.tensor(norm_data_full, dtype=torch.float32)
+    
+    # Step 4: Create a dataloader with the full dataset
+    full_loader = create_single_data_loader(tensor_data_full)
+    
+    # Step 5: Obtain embeddings for the full dataset using the beta-VAE
+    full_embeddings = get_embeddings(beta_vae, full_loader)  # Shape: (N, embedding_dim)
+    
+    # Step 6: Match embeddings to the original tickers
+    tickers = stock_df[ticker_col].values  # Ensure alignment between tickers and rows in stock_data_vae
+    embeddings_dict = {ticker: full_embeddings[i].detach().numpy() for i, ticker in enumerate(tickers)}
+    
+    return embeddings_dict
 
 
 def diversify_betavae_portfolio(
@@ -539,82 +579,7 @@ class Portfolio:
         
         # Improve layout
         plt.axis("equal")  # Equal aspect ratio ensures the pie is circular
-        plt.title(f"{pname}Portfolio Distribution")
+        plt.title(f"{pname}")
         plt.tight_layout()
         plt.show()
-
-
-    # def visualize_portfolio_distribution(self, kind="pie", show_legend=True, figsize=(12, 8), max_labels=15) -> None:
-    #     """
-    #     Visualizes the portfolio distribution using a pie chart or bar chart.
-        
-    #     Parameters:
-    #     - kind: Type of chart to plot. Can be "pie" or "bar".
-    #     - show_legend: Whether to display a legend (for pie chart).
-    #     - figsize: Size of the figure.
-    #     - max_labels: Maximum number of labels to display directly on the chart. 
-    #                 For pie charts, excess labels are aggregated into 'Others'.
-    #                 For bar charts, all stocks are shown regardless.
-    #     """
-    #     # Sort weights and labels for clarity
-    #     sorted_weights, sorted_tickers = zip(
-    #         *sorted(zip(self.w, self.tickers), reverse=True)
-    #     )
-
-    #     # For equal weights, show all stocks
-    #     if np.allclose(sorted_weights, np.full_like(sorted_weights, 1 / len(sorted_weights))):
-    #         max_labels = len(sorted_weights)
-
-    #     # Aggregate small weights for pie chart
-    #     if kind == "pie" and len(sorted_weights) > max_labels:
-    #         displayed_weights = list(sorted_weights[:max_labels])
-    #         displayed_tickers = list(sorted_tickers[:max_labels])
-    #         other_weight = sum(sorted_weights[max_labels:])
-    #         displayed_weights.append(other_weight)
-    #         displayed_tickers.append("Others")
-    #     else:
-    #         displayed_weights = sorted_weights
-    #         displayed_tickers = sorted_tickers
-
-    #     if kind == "pie":
-    #         # Plot pie chart
-    #         plt.figure(figsize=figsize)
-    #         explode = [0.1 if i == 0 else 0 for i in range(len(displayed_weights))]
-
-    #         wedges, texts, autotexts = plt.pie(
-    #             displayed_weights,
-    #             labels=None if show_legend else displayed_tickers,
-    #             autopct="%1.1f%%",
-    #             startangle=90,
-    #             explode=explode,
-    #             textprops=dict(color="black"),
-    #         )
-
-    #         # Add a legend if enabled
-    #         if show_legend:
-    #             plt.legend(
-    #                 loc="upper left",
-    #                 labels=[f"{ticker}: {weight:.2%}" for ticker, weight in zip(displayed_tickers, displayed_weights)],
-    #                 bbox_to_anchor=(1, 0.5),
-    #             )
-
-    #         # Improve layout
-    #         plt.axis("equal")  # Equal aspect ratio ensures the pie is circular
-    #         plt.title("Portfolio Distribution (Pie Chart)")
-    #         plt.tight_layout()
-    #         plt.show()
-
-    #     elif kind == "bar":
-    #         # Plot bar chart
-    #         plt.figure(figsize=figsize)
-    #         plt.bar(displayed_tickers, displayed_weights, color="skyblue")
-    #         plt.xlabel("Tickers")
-    #         plt.ylabel("Weights")
-    #         plt.title("Portfolio Distribution (Bar Chart)")
-    #         plt.xticks(rotation=45, ha="right")
-    #         plt.tight_layout()
-    #         plt.show()
-
-    #     else:
-    #         raise ValueError(f"Unknown chart type: {kind}. Choose 'pie' or 'bar'.")
 

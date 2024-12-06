@@ -22,6 +22,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 
 # Custom modules 
+from src.pca_enc import PCAEncoder # alternative encoding method
 from src.data_fetching import prepare_data_for_vae
 
 ##########################
@@ -104,10 +105,10 @@ def objective(trial, data, verbose=True):
     """Objective function for Optuna to optimize the Beta-VAE model."""
 
     # Suggest hyperparameters to tune
-    latent_dim = trial.suggest_categorical('latent_dim', [5, 10, 20])
+    latent_dim = trial.suggest_categorical('latent_dim', [5, 10, 15, 20, 25, 30])
     beta = trial.suggest_float('beta', 1, 10)
-    learning_rate = trial.suggest_loguniform('learning_rate', 1e-4, 1e-2)
-    batch_size = trial.suggest_categorical('batch_size', [32, 64, 128])
+    learning_rate = trial.suggest_loguniform('learning_rate', 1e-5, 1e-2)
+    batch_size = trial.suggest_categorical('batch_size', [32, 64, 128, 256])
     
     # Create DataLoaders with the suggested batch_size
     train_loader, val_loader, _ = create_data_loaders(data, batch_size=batch_size)
@@ -116,7 +117,7 @@ def objective(trial, data, verbose=True):
     model = BetaVAE(input_dim=data.shape[1], latent_dim=latent_dim, beta=beta)
     
     # Train the model using the train loader and validate with the val loader
-    avg_loss = train_beta_vae(model, train_loader, val_loader, num_epochs=10, 
+    avg_loss = train_beta_vae(model, train_loader, val_loader, num_epochs=20, 
                               learning_rate=learning_rate, beta=beta, verbose=verbose)
     
     return avg_loss
@@ -133,6 +134,7 @@ def get_embeddings(model, dataloader):
             embeddings.append(z)
     embeddings = torch.cat(embeddings, dim=0)
     return embeddings
+
 
 def generate_embeddings_dict(stock_df, scaler, beta_vae, ticker_col="Ticker"):
     """
