@@ -80,8 +80,8 @@ EXPERIMENTS_LOG_PATH = os.path.join(LOGS_DIR, "experiments_results.csv")
 SP500_DATA_PATH = os.path.join(DATA_RAW_DIR, "sp500_data.csv")
 
 # default script parameters
-RETRAIN = False
-REFETCH = False
+RETRAIN = True
+REFETCH = True
 LOAD_RETURNS = False
 verbose = 1
 
@@ -406,9 +406,6 @@ if __name__ == "__main__":
     portfolio_results = []
     portfolio_tickers = {}
 
-    # Define number of iterations for diversification process
-    optim_method = "max_div"
-
     for i in tqdm(range(1, NUM_PORTFOLIOS + 1), desc="Portfolio Diversification Experiments..."):
         # Step 1: Generate random portfolio
         random_tickers = np.random.choice(list(all_returns.keys()), NUM_INITIAL_TICKERS, replace=False)
@@ -416,7 +413,7 @@ if __name__ == "__main__":
         random_portfolio = Portfolio(returns_dict=random_returns, frequency="weekly")
         
         # Optimize initial portfolio
-        random_portfolio.optimize_weights(method=optim_method, update_weights=True)
+        random_portfolio.optimize_weights(method=OPTIM_METHOD, update_weights=True)
         
         # Record initial diversification ratio (DR) and Sharpe ratio (SR)
         initial_dr = random_portfolio.diversification_ratio

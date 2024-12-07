@@ -1,6 +1,6 @@
 {
-    "latent_dim": 10,
-    "beta": 1.4064599493531174,
-    "learning_rate": 0.00106269339296489,
+    "latent_dim": 25,
+    "beta": 1.0157061697875815,
+    "learning_rate": 0.0005810906913452941,
     "batch_size": 32
 }
